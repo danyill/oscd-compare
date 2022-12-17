@@ -119,11 +119,14 @@ export function hashXMLNode(
   // include tag name
   nodeBits.push(node.nodeName);
 
-  // include attributes
+  // include namespace
+  if (!(node.namespaceURI === null)) nodeBits.push(node.namespaceURI)
+
+  // include attributes and their namespaces
   for (let i = 0; i < node.attributes.length; i += 1) {
     const attr = node.attributes[i];
     if (attr!.namespaceURI === null || namespaces.includes(attr.namespaceURI)) {
-      nodeBits.push(`${attr.name}=${attr.value}`);
+      nodeBits.push(`${attr.name}[${attr.namespaceURI}]=${attr.value}`);
     }
   }
 
@@ -136,7 +139,7 @@ export function hashXMLNode(
   return hashText(nodeBits.join(' '));
 }
 
-export function normaliseSCLNode(
+export function normalizeSCLNode(
   node: Element,
   includePrivate: boolean = true,
   includeDescriptions: boolean = true
@@ -182,21 +185,50 @@ export function normaliseSCLNode(
   return node;
 }
 
+function isPublic(element: Element): boolean {
+  return !element.closest('Private');
+}
+
 export function hashSCLNode(
   node: Element,
   namespaces: string[] = [],
   includePrivate: boolean = false,
   includeDescriptions = true
 ): string | null {
-  const normalisedNode = normaliseSCLNode(
+  if (!isPublic(node)) return null;
+
+  const normalizedNode = normalizeSCLNode(
     node,
     includePrivate,
     includeDescriptions
   );
-  if (normalisedNode === null) return null;
+  if (normalizedNode === null) return null;
+
   // We always include the SCL namespace
-  return hashXMLNode(normalisedNode, [
+  return hashXMLNode(normalizedNode, [
     'http://www.iec.ch/61850/2003/SCL',
     ...namespaces,
   ]);
+}
+
+export function linearHash(
+  nodes: Element[],
+  namespaces: string[] = [],
+  includePrivate: boolean = false,
+  includeDescriptions = true
+): string {
+  let nodeHash = '';
+  Array.from(nodes).forEach(node => {
+    const hash = hashSCLNode(
+      node,
+      namespaces,
+      includePrivate,
+      includeDescriptions
+    );
+    if (hash !== null) {
+      nodeHash = `${nodeHash}${hash}`;
+    }
+  });
+
+  return nodeHash;
 }
