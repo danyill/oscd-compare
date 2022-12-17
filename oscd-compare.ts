@@ -3,7 +3,11 @@ import { css, html, LitElement } from 'lit';
 import { property, state } from 'lit/decorators.js';
 // import { classMap } from 'lit/directives/class-map.js';
 
-import { compareMaps, getHash, nodeHash } from './foundation/compare.js';
+import {
+  compareMaps,
+  hashSCLNode,
+  hashText,
+} from './foundation/compare.js';
 
 // QUESTION: we don't declare as a custom element anymore ???
 
@@ -44,38 +48,40 @@ export default class comparePlugin extends LitElement {
     }
 
     // calculate hash for current node, excluding children
-    let hash = nodeHash(node);
+    let nodeHash = hashSCLNode(node);
 
     // check how many are at the current depth
     // if (currentDepth === this.previousDepth)
     this.depthTracker.set(currentDepth, (this.qtyAtDepth += 1));
 
-    // add hash to list of hashes to hash together for higher level nodes
-    this.reHash = this.reHash.concat(hash);
+    if (nodeHash !== null) {
+      // add hash to list of hashes to hash together for higher level nodes
+      this.reHash = this.reHash.concat(nodeHash);
 
-    // we are now traversing upwards, we must hash the children and this node and store the result
-    if (this.previousDepth > currentDepth && this.reHash.length !== 0) {
-      // console.log(this.reHash, 'HASHING THE HECK');
-      const combinedHash = getHash(
-        this.reHash
-          .slice(this.depthTracker.get(currentDepth))
-          .join('')
-          .concat(hash)
-      );
+      // we are now traversing upwards, we must hash the children and this node and store the result
+      if (this.previousDepth > currentDepth && this.reHash.length !== 0) {
+        // console.log(this.reHash, 'HASHING THE HECK');
+        const combinedHash = hashText(
+          this.reHash
+            .slice(this.depthTracker.get(currentDepth))
+            .join('')
+            .concat(nodeHash)
+        );
 
-      this.reHash = [combinedHash];
-      hash = combinedHash;
+        this.reHash = [combinedHash];
+        nodeHash = combinedHash;
+      }
 
       // reset tracking metadata
       this.qtyAtDepth = 0;
-    }
 
-    // add to index
-    if (this.hashTable.has(hash)) {
-      const existingValues = this.hashTable.get(hash);
-      this.hashTable.set(hash, [existingValues].concat(node));
-    } else {
-      this.hashTable.set(hash, node);
+      // add to index
+      if (this.hashTable.has(nodeHash)) {
+        const existingValues = this.hashTable.get(nodeHash);
+        this.hashTable.set(nodeHash, [existingValues].concat(node));
+      } else {
+        this.hashTable.set(nodeHash, node);
+      }
     }
 
     // Log the node name and depth of this element
@@ -100,32 +106,33 @@ export default class comparePlugin extends LitElement {
   }
 
   private _onClick() {
-    if (this.xmlDoc!.length === 2) {
-      console.log('Now we compare');
+    // if (this.xmlDoc!.length === 2) {
+    console.log('Now we compare');
 
-      const startTime = performance.now();
+    const startTime = performance.now();
 
-      const firstDocEl = this.xmlDoc![0].documentElement;
-      this.hashInit();
-      this.postOrderTraversal(firstDocEl);
-      const firstDocHashes = new Map(this.hashTable);
+    const firstDocEl = this.xmlDoc![0].documentElement;
+    this.hashInit();
+    this.postOrderTraversal(firstDocEl);
+    const firstDocHashes = new Map(this.hashTable);
 
-      this.hashInit();
-      const secondDocEl = this.xmlDoc![1].documentElement;
-      this.postOrderTraversal(secondDocEl);
-      // this.hashTable.forEach((v, k) =>
-      //   console.log(`${k.slice(0, 8)}: ${v.tagName}`)
-      // );
-      const secondDocHashes = new Map(this.hashTable);
+    // this.hashInit();
+    // const secondDocEl = this.xmlDoc![1].documentElement;
+    // this.postOrderTraversal(secondDocEl);
+    // this.hashTable.forEach((v, k) =>
+    //   console.log(`${k.slice(0, 8)}: ${v.tagName}`)
+    // );
+    // const secondDocHashes = new Map(this.hashTable);
 
-      const endTime = performance.now();
-      // Calculate the duration of the function
-      const duration = endTime - startTime;
-      console.log(duration, 'ms');
-      console.log(firstDocHashes, secondDocHashes);
+    const endTime = performance.now();
+    // Calculate the duration of the function
+    const duration = endTime - startTime;
+    console.log(duration, 'ms');
+    console.log(firstDocHashes);
+    // , secondDocHashes);
 
-      // compareMaps(firstDocHashes, secondDocHashes);
-    }
+    // compareMaps(firstDocHashes, secondDocHashes);
+    // }
   }
 
   private async getCompareFile(evt: Event): Promise<void> {
@@ -143,7 +150,11 @@ export default class comparePlugin extends LitElement {
 
   render() {
     return html`
-      <h1>We hash our rehashing quite slowly</h1>
+      <h1>
+        <p>Is comparison the thief of joy?</p>
+        <p>Or the dance of diversity?</p>
+        <p>Or the smell of sameness?</p>
+      </h1>
       <input
         id="compare-file-1"
         accept=".sed,.scd,.ssd,.isd,.iid,.cid,.icd,.xml"
@@ -163,6 +174,5 @@ export default class comparePlugin extends LitElement {
     `;
   }
 
-  static styles = css`
-  `;
+  static styles = css``;
 }

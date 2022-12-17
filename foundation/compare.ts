@@ -63,7 +63,9 @@ export function compareMaps(
   console.log(onlyIn2);
 }
 
-export function getHash(text: string): string {
+// https://softwareengineering.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed/145633#145633
+// 64 bit output, seems OK.
+export function hashText(text: string): string {
   let h1 = 0xdeadbeef;
   let h2 = 0x41c6ce57;
   for (let i = 0, ch; i < text.length; i += 1) {
@@ -91,20 +93,110 @@ export function getHash(text: string): string {
   }`;
 }
 
-export function nodeHash(node: Element): string {
-  // for (const name of node.getAttributeNames()) {
-  //   const value = node.getAttribute(name);
-  //   console.log(name, value);
-  // }
+// API
+// hashes the node but does not include the children
+// does not include XML comments or processing instructions
+export function hashXMLNode(
+  node: Element,
+  namespaces: string[] = []
+): string | null {
+  // node not in correct namespace
+  if (!(node.namespaceURI === null || namespaces.includes(node.namespaceURI)))
+    return null;
 
-  const attrs = node
-    .getAttributeNames()
-    .map(name => `${name}=${node.getAttribute(name)}`);
+  // don't include comments, processing instructions or doctypes
+  if (
+    [
+      Node.COMMENT_NODE,
+      Node.PROCESSING_INSTRUCTION_NODE,
+      Node.DOCUMENT_TYPE_NODE,
+    ].includes(node.nodeType)
+  )
+    return null;
 
-  let contentText;
-  if (node.firstChild?.nodeType === Node.TEXT_NODE) {
-    contentText = node.firstChild.textContent;
+  const nodeBits = [];
+
+  // include tag name
+  nodeBits.push(node.nodeName);
+
+  // include attributes
+  for (let i = 0; i < node.attributes.length; i += 1) {
+    const attr = node.attributes[i];
+    if (attr!.namespaceURI === null || namespaces.includes(attr.namespaceURI)) {
+      nodeBits.push(`${attr.name}=${attr.value}`);
+    }
   }
-  const content = `${node.tagName}: ${attrs} ${contentText}`;
-  return getHash(content);
+
+  // text node or character data
+  if ([Node.TEXT_NODE, Node.CDATA_SECTION_NODE].includes(node.nodeType)) {
+    nodeBits.push(node.textContent);
+  }
+
+  // we hash the string result
+  return hashText(nodeBits.join(' '));
+}
+
+export function normaliseSCLNode(
+  node: Element,
+  includePrivate: boolean = true,
+  includeDescriptions: boolean = true
+): Element | null {
+  if (node.nodeName === 'Private' && includePrivate === false) return null;
+
+  if (!includeDescriptions) {
+    node.removeAttribute('desc');
+  }
+
+  if (node.nodeName === 'ExtRef') {
+    if (node.getAttribute('lnInst') === '') {
+      node.setAttribute('lnInst', 'LLN0');
+    }
+
+    if (
+      !node.hasAttribute('srcLDInst') ||
+      node.getAttribute('srcLDInst') === ''
+    ) {
+      node.setAttribute('srcLDInst', node.getAttribute('ldInst')!);
+    }
+
+    if (
+      !node.hasAttribute('srcLNClass') ||
+      node.getAttribute('srcLNClass') === ''
+    ) {
+      node.setAttribute('srcLNClass', 'LLN0');
+    }
+
+    if (!node.hasAttribute('srcLNInst')) {
+      node.setAttribute('srcLNInst', '');
+    }
+
+    if (!node.hasAttribute('srcCBName')) {
+      node.removeAttribute('srcLDInst');
+      node.removeAttribute('srcPrefix');
+      node.removeAttribute('srcLNClass');
+      node.removeAttribute('srcLNInst');
+    }
+  }
+  // now do for every other node !!
+
+  return node;
+}
+
+export function hashSCLNode(
+  node: Element,
+  namespaces: string[] = [],
+  includePrivate: boolean = false,
+  includeDescriptions = true
+): string | null {
+  const normalisedNode = normaliseSCLNode(
+    node,
+    includePrivate,
+    includeDescriptions
+  );
+  if (normalisedNode === null) return null;
+  // We always include the SCL namespace
+  return hashXMLNode(normalisedNode, [
+    'http://www.iec.ch/61850/2003/SCL',
+    ...namespaces,
+  ]);
 }

@@ -4,7 +4,8 @@
     "module": "esnext",
     "moduleResolution": "node",
     "noEmitOnError": true,
-    "lib": ["es2017", "dom"],
+    // TODO: Ask Christian whether dom.iterable should be here?
+    "lib": ["es2017", "dom", "dom.iterable"],
     "strict": true,
     "esModuleInterop": false,
     "allowSyntheticDefaultImports": true,
