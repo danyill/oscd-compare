@@ -120,7 +120,7 @@ export function hashXMLNode(
   nodeBits.push(node.nodeName);
 
   // include namespace
-  if (!(node.namespaceURI === null)) nodeBits.push(node.namespaceURI)
+  if (!(node.namespaceURI === null)) nodeBits.push(node.namespaceURI);
 
   // include attributes and their namespaces
   for (let i = 0; i < node.attributes.length; i += 1) {
@@ -144,45 +144,46 @@ export function normalizeSCLNode(
   includePrivate: boolean = true,
   includeDescriptions: boolean = true
 ): Element | null {
-  if (node.nodeName === 'Private' && includePrivate === false) return null;
+  const nodeCopy = <Element>node.cloneNode(false)
+  if (nodeCopy.nodeName === 'Private' && includePrivate === false) return null;
 
   if (!includeDescriptions) {
-    node.removeAttribute('desc');
+    nodeCopy.removeAttribute('desc');
   }
 
-  if (node.nodeName === 'ExtRef') {
-    if (node.getAttribute('lnInst') === '') {
-      node.setAttribute('lnInst', 'LLN0');
+  if (nodeCopy.nodeName === 'ExtRef') {
+    if (nodeCopy.getAttribute('lnInst') === '') {
+      nodeCopy.setAttribute('lnInst', 'LLN0');
     }
 
     if (
-      !node.hasAttribute('srcLDInst') ||
-      node.getAttribute('srcLDInst') === ''
+      !nodeCopy.hasAttribute('srcLDInst') ||
+      nodeCopy.getAttribute('srcLDInst') === ''
     ) {
-      node.setAttribute('srcLDInst', node.getAttribute('ldInst')!);
+      nodeCopy.setAttribute('srcLDInst', nodeCopy.getAttribute('ldInst')!);
     }
 
     if (
-      !node.hasAttribute('srcLNClass') ||
-      node.getAttribute('srcLNClass') === ''
+      !nodeCopy.hasAttribute('srcLNClass') ||
+      nodeCopy.getAttribute('srcLNClass') === ''
     ) {
-      node.setAttribute('srcLNClass', 'LLN0');
+      nodeCopy.setAttribute('srcLNClass', 'LLN0');
     }
 
-    if (!node.hasAttribute('srcLNInst')) {
-      node.setAttribute('srcLNInst', '');
+    if (!nodeCopy.hasAttribute('srcLNInst')) {
+      nodeCopy.setAttribute('srcLNInst', '');
     }
 
-    if (!node.hasAttribute('srcCBName')) {
-      node.removeAttribute('srcLDInst');
-      node.removeAttribute('srcPrefix');
-      node.removeAttribute('srcLNClass');
-      node.removeAttribute('srcLNInst');
+    if (!nodeCopy.hasAttribute('srcCBName')) {
+      nodeCopy.removeAttribute('srcLDInst');
+      nodeCopy.removeAttribute('srcPrefix');
+      nodeCopy.removeAttribute('srcLNClass');
+      nodeCopy.removeAttribute('srcLNInst');
     }
   }
   // now do for every other node !!
 
-  return node;
+  return nodeCopy;
 }
 
 function isPublic(element: Element): boolean {
@@ -231,4 +232,58 @@ export function linearHash(
   });
 
   return nodeHash;
+}
+
+export function hashNode(rootNode: Element): Map<string, Element | Element[]> {
+  let reHash: string[] = [];
+  let previousDepth = 0;
+  const hashTable = new Map();
+  const depthTracker = new Map();
+  let qtyAtDepth = 0;
+
+  function postOrderTraversal(node: Element, currentDepth = 0) {
+    // Traverse the tree leaves first
+    for (const child of Array.from(node.children)) {
+      postOrderTraversal(child, currentDepth + 1);
+    }
+
+    // calculate hash for current node, excluding children
+    let nodeHash = hashSCLNode(node);
+
+    // check how many are at the current depth
+    // if (currentDepth === this.previousDepth)
+    depthTracker.set(currentDepth, (qtyAtDepth += 1));
+
+    if (nodeHash !== null) {
+      // add hash to list of hashes to hash together for higher level nodes
+      reHash = reHash.concat(nodeHash);
+
+      // we are now traversing upwards, we must hash the children and this node and store the result
+      if (previousDepth > currentDepth && reHash.length !== 0) {
+        // console.log(this.reHash, 'HASHING THE HECK');
+        const combinedHash = hashText(
+          reHash.slice(depthTracker.get(currentDepth)).join('').concat(nodeHash)
+        );
+
+        reHash = [combinedHash];
+        nodeHash = combinedHash;
+      }
+
+      // reset tracking metadata
+      qtyAtDepth = 0;
+
+      // add to index
+      if (hashTable.has(nodeHash)) {
+        const existingValues = hashTable.get(nodeHash);
+        hashTable.set(nodeHash, [existingValues].concat(node));
+      } else {
+        hashTable.set(nodeHash, node);
+      }
+    }
+    previousDepth = currentDepth;
+  }
+
+  postOrderTraversal(rootNode);
+
+  return hashTable;
 }

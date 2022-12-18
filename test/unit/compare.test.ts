@@ -2,9 +2,9 @@ import { expect } from '@open-wc/testing';
 
 import { linearHash } from '../../foundation/compare.js';
 
-function xmlHash(str: string, nSes: string[] = []): string {
+function xmlHash(str: string, nses: string[] = []): string {
   const xmlDoc = new DOMParser().parseFromString(str, 'application/xml');
-  return linearHash(Array.from(xmlDoc.documentElement.children), nSes);
+  return linearHash(Array.from(xmlDoc.documentElement.children), nses);
 }
 
 describe('Hashing of XML Nodes', () => {
