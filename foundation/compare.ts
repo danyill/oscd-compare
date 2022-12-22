@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 type ExclusionType = {
   nodeName: string;
   attribute: string;
@@ -279,19 +280,22 @@ export function hashNodeRecursively(
       if (previousDepth > currentDepth && reHash.length !== 0) {
         // console.log(this.reHash, 'HASHING THE HECK');
         const combinedHash = hashText(
-          reHash.slice(depthTracker.get(currentDepth)).join('').concat(childlessHash)
+          reHash
+            .slice(depthTracker.get(currentDepth))
+            .join('')
+            .concat(childlessHash)
         );
 
         reHash = [combinedHash];
         childedHash = combinedHash;
       } else {
-        childedHash = childlessHash 
+        childedHash = childlessHash;
       }
 
       // reset tracking metadata
       qtyAtDepth = 0;
 
-      const nodeHash = `${childedHash}_${childlessHash}`
+      const nodeHash = `${childedHash}_${childlessHash}`;
       // add to index
       if (hashTable.has(childlessHash)) {
         const existingValues = hashTable.get(nodeHash);
@@ -329,6 +333,87 @@ export function swapMap<K, V>(map: Map<K, V>): Map<V, K> {
   return result;
 }
 
+/*
+
+  <EnumType id="Mod" xmlns:expl="https://example.org">
+    <EnumVal ord="0" expl:my="attr">on</EnumVal>
+    <EnumVal ord="1">blocked</EnumVal>
+    <EnumVal ord="1">blocked<!--Comment!--></EnumVal>
+  </EnumType>
+
+  <EnumType id="Mod" xmlns:expl="https://example.org">
+    <EnumVal ord="1">blocked</EnumVal>
+    <EnumVal ord="0" expl:my="attr">on</EnumVal>
+    <EnumVal ord="1">blocked<!--Comment!--></EnumVal>
+  </EnumType>
+
+  [
+    {ord: '1', content: 'blocked'},
+    {ord: '0', content: 'on', extAttributes: { 'https://example.org' : {'my': 'attr'}}},
+    {ord: '1', content: 'blocked'},
+  ]
+
+   */
+
+type AttributeDict = Record<string, Record<string, string>>;
+
+type Options = { namespaces?: string[]; considerDescs?: boolean };
+
+type EnumVal = {
+  ord: string | null;
+  content: string | null;
+  extAttributes?: AttributeDict;
+};
+
+type ModelSCLElement = EnumVal;
+
+type ModelTextNode = string;
+
+// eslint-disable-next-line no-use-before-define
+type ModelXMLNode = ModelXMLElement | ModelSCLElement | ModelTextNode;
+
+type ModelXMLElement = {
+  tagName: string;
+  attributes: AttributeDict;
+  children: ModelXMLNode[];
+};
+
+const sclTransforms: Partial<
+  Record<string, (element: Element, opts: Options) => ModelSCLElement>
+> = {
+  EnumVal: (enumVal: Element, _opts: Options): EnumVal => {
+    const ord = enumVal.getAttribute('ord');
+    const content = enumVal.textContent;
+    const extAttributes = {};
+    return { ord, content, extAttributes };
+  },
+};
+
+function transformElement(element: Element, _opts: Options): ModelXMLElement {
+  return { tagName: element.tagName, attributes: {}, children: [] };
+}
+
+function isElement(node: Node): node is Element {
+  return node.nodeType === Node.ELEMENT_NODE;
+}
+
+function transformNode(node: Node, opts: Options): ModelXMLNode {
+  if (isElement(node)) {
+    const sclTransform = sclTransforms[node.tagName];
+    if (sclTransform) return sclTransform(node, opts);
+    return transformElement(node, opts);
+  }
+  return '';
+}
+
+function hashString(str: string): string {
+  return str;
+}
+
+export function hashNode(node: Node, opts: Options = {}): string {
+  return hashString(JSON.stringify(transformNode(node, opts)));
+}
+
 export function hashSCL(doc: Document, namespaces: string[]) {
   const rootNode = doc.documentElement;
 
@@ -337,7 +422,7 @@ export function hashSCL(doc: Document, namespaces: string[]) {
   let enumTypeHashes = new Map();
 
   // exclusions are for pure references that are then substituted into
-  // other elements, so the id of an EnumType is just a pointer that 
+  // other elements, so the id of an EnumType is just a pointer that
   // should not be hashed or otherwise preserved
   const exclusions: ExclusionsType = [
     { nodeName: 'EnumType', attribute: 'id' },
@@ -357,13 +442,10 @@ export function hashSCL(doc: Document, namespaces: string[]) {
   // semantic first.
 
   // OK now we need IDs instead of element
-  // Then we need to recurse into the DTTs, following each DAType through 
+  // Then we need to recurse into the DTTs, following each DAType through
   // and making sure it is only tuoched one.
   // Remembering that our hashing algorithm doesn't guarantee uniqueness
   // And we need to recursively work our way into the datatype templates.
 
   // And can we come up with a generic approach for the substitution?
-  
 }
-
-

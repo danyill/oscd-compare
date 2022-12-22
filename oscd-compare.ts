@@ -3,12 +3,7 @@ import { css, html, LitElement } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 // import { classMap } from 'lit/directives/class-map.js';
 
-import {
-  compareMaps,
-  getXmlRootNamespaces,
-  hashNodeRecursively,
-  hashSCL,
-} from './foundation/compare.js';
+import { getXmlRootNamespaces, hashSCL } from './foundation/compare.js';
 
 import { ProcessingDialog } from './foundation/components/processing.js';
 
@@ -19,8 +14,11 @@ import { ProcessingDialog } from './foundation/components/processing.js';
 /** An editor [[`plugin`]] to configure `Report`, `GOOSE`, `SampledValue` control blocks and its `DataSet` */
 export default class comparePlugin extends LitElement {
   /** The document being edited as provided to plugins by [[`OpenSCD`]]. */
-  @property({ attribute: false })
+  @state()
   doc!: XMLDocument;
+
+  @state()
+  docs!: Record<string, XMLDocument>;
 
   /**
    * The number of times the button has been clicked.
@@ -43,7 +41,7 @@ export default class comparePlugin extends LitElement {
     const namespaces = getXmlRootNamespaces(this.xmlDoc[0]);
 
     // const firstDocHashes = hashNodeRecursively(this.xmlDoc[0].documentElement, namespaces);
-    const firstDocHashes = hashSCL(this.xmlDoc[0], namespaces)
+    const firstDocHashes = hashSCL(this.xmlDoc[0], namespaces);
 
     const endTime = performance.now();
     // this.waiter.processing = false;
