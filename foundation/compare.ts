@@ -1,3 +1,10 @@
+type ExclusionType = {
+  nodeName: string;
+  attribute: string;
+};
+
+type ExclusionsType = ExclusionType[] | [];
+
 /* eslint-disable no-console */
 function differenceInFirstArray(array1: Element[], array2: Element[]) {
   return array1.filter(
@@ -98,6 +105,7 @@ export function hashText(text: string): string {
 // does not include XML comments or processing instructions
 export function hashXMLNode(
   node: Element,
+  exclusions: ExclusionsType = [],
   namespaces: string[] = []
 ): string | null {
   // node not in correct namespace
@@ -144,7 +152,7 @@ export function normalizeSCLNode(
   includePrivate: boolean = true,
   includeDescriptions: boolean = true
 ): Element | null {
-  const nodeCopy = <Element>node.cloneNode(false)
+  const nodeCopy = <Element>node.cloneNode(false);
   if (nodeCopy.nodeName === 'Private' && includePrivate === false) return null;
 
   if (!includeDescriptions) {
@@ -193,6 +201,7 @@ function isPublic(element: Element): boolean {
 export function hashSCLNode(
   node: Element,
   namespaces: string[] = [],
+  exclusions: ExclusionsType = [],
   includePrivate: boolean = false,
   includeDescriptions = true
 ): string | null {
@@ -206,7 +215,7 @@ export function hashSCLNode(
   if (normalizedNode === null) return null;
 
   // We always include the SCL namespace
-  return hashXMLNode(normalizedNode, [
+  return hashXMLNode(normalizedNode, exclusions, [
     'http://www.iec.ch/61850/2003/SCL',
     ...namespaces,
   ]);
@@ -214,6 +223,7 @@ export function hashSCLNode(
 
 export function linearHash(
   nodes: Element[],
+  exclusions: ExclusionsType = [],
   namespaces: string[] = [],
   includePrivate: boolean = false,
   includeDescriptions = true
@@ -223,6 +233,7 @@ export function linearHash(
     const hash = hashSCLNode(
       node,
       namespaces,
+      exclusions,
       includePrivate,
       includeDescriptions
     );
@@ -234,7 +245,11 @@ export function linearHash(
   return nodeHash;
 }
 
-export function hashNode(rootNode: Element): Map<string, Element | Element[]> {
+export function hashNodeRecursively(
+  rootNode: Element,
+  namespaces: string[],
+  exclusions: ExclusionsType = []
+): Map<string, Element | Element[]> {
   let reHash: string[] = [];
   let previousDepth = 0;
   const hashTable = new Map();
@@ -248,32 +263,37 @@ export function hashNode(rootNode: Element): Map<string, Element | Element[]> {
     }
 
     // calculate hash for current node, excluding children
-    let nodeHash = hashSCLNode(node);
+    const childlessHash = hashSCLNode(node, namespaces, exclusions);
+    // allocate hash for current node, including children
+    let childedHash: string = '';
 
     // check how many are at the current depth
     // if (currentDepth === this.previousDepth)
     depthTracker.set(currentDepth, (qtyAtDepth += 1));
 
-    if (nodeHash !== null) {
+    if (childlessHash !== null) {
       // add hash to list of hashes to hash together for higher level nodes
-      reHash = reHash.concat(nodeHash);
+      reHash = reHash.concat(childlessHash);
 
       // we are now traversing upwards, we must hash the children and this node and store the result
       if (previousDepth > currentDepth && reHash.length !== 0) {
         // console.log(this.reHash, 'HASHING THE HECK');
         const combinedHash = hashText(
-          reHash.slice(depthTracker.get(currentDepth)).join('').concat(nodeHash)
+          reHash.slice(depthTracker.get(currentDepth)).join('').concat(childlessHash)
         );
 
         reHash = [combinedHash];
-        nodeHash = combinedHash;
+        childedHash = combinedHash;
+      } else {
+        childedHash = childlessHash 
       }
 
       // reset tracking metadata
       qtyAtDepth = 0;
 
+      const nodeHash = `${childedHash}_${childlessHash}`
       // add to index
-      if (hashTable.has(nodeHash)) {
+      if (hashTable.has(childlessHash)) {
         const existingValues = hashTable.get(nodeHash);
         hashTable.set(nodeHash, [existingValues].concat(node));
       } else {
@@ -287,3 +307,63 @@ export function hashNode(rootNode: Element): Map<string, Element | Element[]> {
 
   return hashTable;
 }
+
+export function getXmlRootNamespaces(doc: Document): string[] {
+  const rootElement = doc.documentElement;
+  const namespaces: string[] = [];
+  for (let i = 0; i < rootElement.attributes.length; i += 1) {
+    const attr = rootElement.attributes[i];
+    if (attr.name.startsWith('xmlns:') || attr.name === 'xmlns') {
+      namespaces.push(attr.value);
+    }
+  }
+  return namespaces;
+}
+
+// assumes uniqueness
+export function swapMap<K, V>(map: Map<K, V>): Map<V, K> {
+  const result = new Map<V, K>();
+  for (const [key, value] of map.entries()) {
+    result.set(value, key);
+  }
+  return result;
+}
+
+export function hashSCL(doc: Document, namespaces: string[]) {
+  const rootNode = doc.documentElement;
+
+  const dataTypes = rootNode.querySelector(':root > DataTypeTemplates');
+  const enumTypes = Array.from(dataTypes!.querySelectorAll('EnumType'));
+  let enumTypeHashes = new Map();
+
+  // exclusions are for pure references that are then substituted into
+  // other elements, so the id of an EnumType is just a pointer that 
+  // should not be hashed or otherwise preserved
+  const exclusions: ExclusionsType = [
+    { nodeName: 'EnumType', attribute: 'id' },
+  ];
+
+  enumTypes.forEach(type => {
+    enumTypeHashes = new Map([
+      ...enumTypeHashes,
+      ...hashNodeRecursively(type, namespaces, exclusions),
+    ]);
+  });
+
+  console.log(enumTypeHashes);
+  // two objectives
+  // simple compare
+  //  semantic compare
+  // semantic first.
+
+  // OK now we need IDs instead of element
+  // Then we need to recurse into the DTTs, following each DAType through 
+  // and making sure it is only tuoched one.
+  // Remembering that our hashing algorithm doesn't guarantee uniqueness
+  // And we need to recursively work our way into the datatype templates.
+
+  // And can we come up with a generic approach for the substitution?
+  
+}
+
+

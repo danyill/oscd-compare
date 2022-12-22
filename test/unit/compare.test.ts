@@ -4,7 +4,7 @@ import { linearHash } from '../../foundation/compare.js';
 
 function xmlHash(str: string, nses: string[] = []): string {
   const xmlDoc = new DOMParser().parseFromString(str, 'application/xml');
-  return linearHash(Array.from(xmlDoc.documentElement.children), nses);
+  return linearHash(Array.from(xmlDoc.documentElement.children), [], nses);
 }
 
 describe('Hashing of XML Nodes', () => {
