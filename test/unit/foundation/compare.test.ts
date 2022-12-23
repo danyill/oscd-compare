@@ -1,6 +1,15 @@
+/* eslint-disable no-param-reassign */
 import { expect } from '@open-wc/testing';
 
-import { hashNode } from '../../../foundation/compare.js';
+import { hashNode, Options } from '../../../foundation/compare.js';
+
+type TestOptions = { node: Node; opts?: Options; mutate: (n: Node) => void };
+
+function changesHash({ node, opts, mutate }: TestOptions): boolean {
+  const mutatedNode = node.cloneNode(true);
+  mutate(mutatedNode);
+  return hashNode(node, opts) !== hashNode(mutatedNode, opts);
+}
 
 const doc = new DOMParser().parseFromString(
   `
@@ -10,7 +19,7 @@ const doc = new DOMParser().parseFromString(
     <EnumVal ord="0">blocked</EnumVal>
     <EnumVal ord="1" expl:my="attr">on</EnumVal>
   </EnumType>
-  <EnumType id="Example" xmlns:expl="https://example.org">
+  <EnumType id="Example2" xmlns:expl="https://example.org">
     <EnumVal ord="0">blocked</EnumVal>
     <EnumVal ord="1">on</EnumVal>
   </EnumType>
@@ -23,22 +32,55 @@ const doc = new DOMParser().parseFromString(
 describe('hashNode', () => {
   describe('given an SCL Element', () => {
     describe('with tagName EnumVal', () => {
+      const node = doc.querySelector('EnumVal');
       it('incorporates the ord in the hash', () => {
-        const val = doc.querySelector('EnumVal')!;
-        const before = hashNode(val);
-        const val2 = val.cloneNode(true) as Element;
-        val2.setAttribute('ord', '2');
-        const after = hashNode(val2);
-        expect(before).not.to.equal(after);
+        expect({
+          node,
+          mutate: (n: Node) => {
+            (<Element>n).setAttribute('ord', '2');
+          },
+        }).to.satisfy(changesHash);
       });
 
-      it('incorporates the textContent in the hash', () => {
-        const val = doc.querySelector('EnumVal')!;
-        const before = hashNode(val);
-        const val2 = val.cloneNode(true) as Element;
-        val2.textContent = 'unblocked';
-        const after = hashNode(val2);
-        expect(before).not.to.equal(after);
+      it('incorporates the textContent in the hash', () =>
+        expect({
+          node,
+          mutate: (n: Node) => {
+            (<Element>n).textContent = 'unblocked';
+          },
+        }).to.satisfy(changesHash));
+
+      it('incorporates the desc field if specified', () =>
+        expect({
+          node,
+          opts: { considerDescs: true },
+          mutate: (n: Node) => {
+            (<Element>n).setAttribute('desc', 'unblocked');
+          },
+        }).to.satisfy(changesHash));
+
+      it('does not incorporate the desc field if not specified', () =>
+        expect({
+          node,
+          mutate: (n: Node) => {
+            (<Element>n).setAttribute('desc', 'unblocked');
+          },
+        }).to.not.satisfy(changesHash));
+    });
+
+    describe('with tagName EnumType', () => {
+      const node = doc.querySelector('EnumType');
+      it('changes when an EnumVal is added', () => {
+        expect({
+          node,
+          mutate: (n: Node) => {
+            const child = (<Element>n)
+              .querySelector('EnumVal')!
+              .cloneNode(true) as Element;
+            child.setAttribute('ord', '3');
+            n.appendChild(child);
+          },
+        }).to.satisfy(changesHash);
       });
     });
   });

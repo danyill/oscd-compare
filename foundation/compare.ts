@@ -357,15 +357,18 @@ export function swapMap<K, V>(map: Map<K, V>): Map<V, K> {
 
 type AttributeDict = Record<string, Record<string, string>>;
 
-type Options = { namespaces?: string[]; considerDescs?: boolean };
+export type Options = { namespaces?: string[]; considerDescs?: boolean };
 
 type EnumVal = {
   ord: string | null;
+  desc?: string | null;
   content: string | null;
   extAttributes?: AttributeDict;
 };
 
-type ModelSCLElement = EnumVal;
+type EnumType = Number;
+
+type ModelSCLElement = EnumVal | EnumType;
 
 type ModelTextNode = string;
 
@@ -381,12 +384,14 @@ type ModelXMLElement = {
 const sclTransforms: Partial<
   Record<string, (element: Element, opts: Options) => ModelSCLElement>
 > = {
-  EnumVal: (enumVal: Element, _opts: Options): EnumVal => {
+  EnumVal: (enumVal: Element, opts: Options): EnumVal => {
     const ord = enumVal.getAttribute('ord');
+    const desc = opts.considerDescs ? enumVal.getAttribute('desc') : undefined;
     const content = enumVal.textContent;
     const extAttributes = {};
-    return { ord, content, extAttributes };
+    return { ord, desc, content, extAttributes };
   },
+  EnumType: (enumType: Element, opts: Options): EnumType => enumType.childElementCount
 };
 
 function transformElement(element: Element, _opts: Options): ModelXMLElement {
