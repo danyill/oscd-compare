@@ -357,16 +357,20 @@ export function swapMap<K, V>(map: Map<K, V>): Map<V, K> {
 
 type AttributeDict = Record<string, Record<string, string>>;
 
-export type Options = { namespaces?: string[]; considerDescs?: boolean };
+export type Options = {
+  namespaces?: string[];
+  considerDescs?: boolean;
+  considerPrivates?: boolean;
+};
 
 type EnumVal = {
   ord: string | null;
   desc?: string | null;
   content: string | null;
-  extAttributes?: AttributeDict;
+  extAttributes?: number;
 };
 
-type EnumType = Number;
+type EnumType = { childCount: Number; desc?: string | null };
 
 type ModelSCLElement = EnumVal | EnumType;
 
@@ -387,11 +391,44 @@ const sclTransforms: Partial<
   EnumVal: (enumVal: Element, opts: Options): EnumVal => {
     const ord = enumVal.getAttribute('ord');
     const desc = opts.considerDescs ? enumVal.getAttribute('desc') : undefined;
+
     const content = enumVal.textContent;
-    const extAttributes = {};
+    const extAttributes = Array.from(enumVal.attributes).filter(
+      a =>
+        a.namespaceURI !== 'http://www.iec.ch/61850/2003/SCL' &&
+        opts.namespaces?.includes(a.namespaceURI ?? 'None')
+    ).length;
     return { ord, desc, content, extAttributes };
   },
-  EnumType: (enumType: Element, opts: Options): EnumType => enumType.childElementCount
+  EnumType: (enumType: Element, opts: Options): EnumType => {
+    let children = Array.from(enumType.childNodes).filter(
+      n => n.nodeType !== Node.COMMENT_NODE
+    );
+
+    if (!opts.considerPrivates) {
+      children = children.filter(n => n.nodeName !== 'Private');
+    }
+
+    children = children.filter(
+      n =>
+        n.isDefaultNamespace('http://www.iec.ch/61850/2003/SCL') ||
+        opts.namespaces?.includes((<Element>n).namespaceURI ?? '')
+    );
+
+    const acceptableChildren = ['EnumVal', 'Private'];
+    children = children.filter(
+      n =>
+        n.nodeType !== Node.ELEMENT_NODE ||
+        (Node.ELEMENT_NODE &&
+          (<Element>n).isDefaultNamespace('http://www.iec.ch/61850/2003/SCL') &&
+          ['EnumVal', 'Private'].includes((<Element>n).tagName)) ||
+        !(<Element>n).isDefaultNamespace('http://www.iec.ch/61850/2003/SCL')
+    );
+
+    const desc = opts.considerDescs ? enumType.getAttribute('desc') : undefined;
+
+    return { childCount: children.length, desc };
+  },
 };
 
 function transformElement(element: Element, _opts: Options): ModelXMLElement {
