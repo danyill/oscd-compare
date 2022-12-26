@@ -13,11 +13,13 @@ function changesHash({ node, opts, mutate }: TestOptions): boolean {
 
 const doc = new DOMParser().parseFromString(
   `
-<SCL xmlns="http://www.iec.ch/61850/2003/SCL" version="2007" revision="B" release="4">
+<SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:expl="https://example.org" version="2007" revision="B" release="4">
 <DataTypeTemplates>
   <EnumType id="Example" xmlns:expl="https://example.org">
     <EnumVal ord="0">blocked</EnumVal>
     <EnumVal ord="1" expl:my="attr">on</EnumVal>
+    <Private type="star" src="./cosmos">
+    <Private type="dream" expl:probes="brain">
   </EnumType>
   <EnumType id="Example2" xmlns:expl="https://example.org">
     <EnumVal ord="0">blocked</EnumVal>
@@ -101,158 +103,225 @@ describe('hashNode', () => {
           },
         }).to.satisfy(changesHash));
     });
+  });
 
-    describe('with tagName EnumType', () => {
-      const node = doc.querySelector('EnumType');
+  describe('with tagName Private', () => {
+    const node = doc.querySelector('Private');
+    it('changes when the type is changed', () => {
+      expect({
+        node,
+        mutate: (n: Node) => {
+          (<Element>n).setAttribute('type', 'NotVeryTypical');
+        },
+      }).to.satisfy(changesHash);
+    });
 
-      it('changes when an EnumVal is added', () => {
+    it('changes when the source is changed', () => {
+      expect({
+        node,
+        mutate: (n: Node) => {
+          (<Element>n).setAttribute('source', './galaxyB');
+        },
+      }).to.satisfy(changesHash);
+    });
+
+    it('changes when the text content is changed)', () => {
+      expect({
+        node,
+        mutate: (n: Node) => {
+          (<Element>n).textContent = 'unblocked';
+        },
+      }).to.satisfy(changesHash);
+    });
+
+    it('changes with a considered non-SCL namespace element', () => {
+      expect({
+        node,
+        opts: { namespaces: ['http://www.dreaming.com/a/better/world'] },
+        mutate: (n: Node): void => {
+          const child = n.ownerDocument!.createElementNS(
+            'http://www.dreaming.com/a/better/world',
+            'Dream'
+          );
+          child.setAttribute('dreamId', '001');
+          n.appendChild(child);
+        },
+      }).to.satisfy(changesHash);
+    });
+
+    it('changes with a considered non-SCL namespace attribute name', () => {
+      expect({
+        node,
+        opts: { namespaces: ['http://www.dreaming.com/a/better/world'] },
+        mutate: (n: Node): void => {
+          (<Element>n).setAttributeNS(
+            'http://www.dreaming.com/a/better/world',
+            'Dream',
+            'TimesGoneBy'
+          );
+        },
+      }).to.satisfy(changesHash);
+    });
+
+    it('changes with a considered non-SCL namespace attribute value', () => {
+      expect({
+        node,
+        opts: { considerPrivates: true },
+        mutate: (n: Node): void => {
+          (<Element>n).setAttributeNS(
+            'https://example.org',
+            'expl:probes',
+            'ears'
+          );
+        },
+      }).to.satisfy(changesHash);
+    });
+  });
+
+  describe('with tagName EnumType', () => {
+    const node = doc.querySelector('EnumType');
+
+    it('changes when an EnumVal is added', () => {
+      expect({
+        node,
+        mutate: (n: Node) => {
+          const child = (<Element>n)
+            .querySelector('EnumVal')!
+            .cloneNode(true) as Element;
+          child.setAttribute('ord', '3');
+          n.appendChild(child);
+        },
+      }).to.satisfy(changesHash);
+    });
+
+    it('does not change when an Private element is added', () => {
+      expect({
+        node,
+        opts: { considerPrivates: false },
+        mutate: (n: Node): void => {
+          const child = n.ownerDocument!.createElementNS(
+            'http://www.iec.ch/61850/2003/SCL',
+            'Private'
+          );
+          child.setAttribute('type', 'VeryPrivateDoNotLook');
+          n.appendChild(child);
+        },
+      }).to.not.satisfy(changesHash);
+    });
+
+    it('does change when a Private element exists and is considered', () => {
+      expect({
+        node,
+        opts: { considerPrivates: true },
+        mutate: (n: Node): void => {
+          const child = n.ownerDocument!.createElementNS(
+            'http://www.iec.ch/61850/2003/SCL',
+            'Private'
+          );
+          child.setAttribute('type', 'VeryPrivateDoNotLook');
+          n.appendChild(child);
+        },
+      }).to.satisfy(changesHash);
+    });
+
+    it('does not change when a comment node exists', () => {
+      expect({
+        node,
+        mutate: (n: Node): void => {
+          const child = n.ownerDocument!.createComment(
+            'You will never see this comment!'
+          );
+          n.appendChild(child);
+        },
+      }).to.not.satisfy(changesHash);
+    });
+
+    it('does not change when a non-SCL namespace element node exists', () => {
+      expect({
+        node,
+        mutate: (n: Node): void => {
+          const child = n.ownerDocument!.createElementNS(
+            'http://www.dreaming.com/a/better/world',
+            'Dream'
+          );
+          child.setAttribute('dreamId', '001');
+          n.appendChild(child);
+        },
+      }).to.not.satisfy(changesHash);
+    });
+
+    it('does change when a non-SCL namespace element node exists and is considered', () => {
+      expect({
+        node,
+        opts: { namespaces: ['http://www.dreaming.com/a/better/world'] },
+        mutate: (n: Node): void => {
+          const child = n.ownerDocument!.createElementNS(
+            'http://www.dreaming.com/a/better/world',
+            'Dream'
+          );
+          child.setAttribute('dreamId', '001');
+          n.appendChild(child);
+        },
+      }).to.satisfy(changesHash);
+    });
+
+    it('does not change if the namespaced element has a different namespace to the added element', () => {
+      expect({
+        node,
+        opts: {
+          namespaces: ['http://www.dreaming.com/a/better/worldNotReally'],
+        },
+        mutate: (n: Node): void => {
+          const child = n.ownerDocument!.createElementNS(
+            'http://www.dreaming.com/a/better/world',
+            'Dream'
+          );
+          child.setAttribute('dreamId', '001');
+          n.appendChild(child);
+        },
+      }).to.not.satisfy(changesHash);
+    });
+
+    it('changes with the desc field if considered', () =>
+      expect({
+        node,
+        opts: { considerDescs: true },
+        mutate: (n: Node) => {
+          (<Element>n).setAttribute('desc', 'unblocked');
+        },
+      }).to.satisfy(changesHash));
+
+    describe('when a child changes', () => {
+      it('does change when a child EnumVal changes', () => {
         expect({
           node,
-          mutate: (n: Node) => {
-            const child = (<Element>n)
-              .querySelector('EnumVal')!
-              .cloneNode(true) as Element;
-            // ensure roughly schema compliant
-            child.setAttribute('ord', '3');
-            n.appendChild(child);
+          mutate: (n: Node): void => {
+            const child = (<Element>n).querySelector('EnumVal')!;
+            child.setAttribute('ord', '73');
           },
         }).to.satisfy(changesHash);
       });
 
-      it('does not change when an Private element is added', () => {
+      it('does not change for a Private change', () => {
         expect({
           node,
-          opts: { considerPrivates: false },
           mutate: (n: Node): void => {
-            const child = n.ownerDocument!.createElementNS(
-              'http://www.iec.ch/61850/2003/SCL',
-              'Private'
-            );
-            child.setAttribute('type', 'VeryPrivateDoNotLook');
-            n.appendChild(child);
+            const child = (<Element>n).querySelector('Private')!;
+            child.setAttribute('type', 'ANewType');
           },
         }).to.not.satisfy(changesHash);
       });
 
-      it('does change when a Private element exists and is considered', () => {
+      it('does change for a Private change when considered', () => {
         expect({
           node,
           opts: { considerPrivates: true },
           mutate: (n: Node): void => {
-            const child = n.ownerDocument!.createElementNS(
-              'http://www.iec.ch/61850/2003/SCL',
-              'Private'
-            );
-            child.setAttribute('type', 'VeryPrivateDoNotLook');
-            n.appendChild(child);
+            const child = (<Element>n).querySelector('Private')!;
+            child.setAttribute('type', 'ANewType');
           },
         }).to.satisfy(changesHash);
       });
-
-      it('does not change when a comment node exists', () => {
-        expect({
-          node,
-          mutate: (n: Node): void => {
-            const child = n.ownerDocument!.createComment(
-              'You will never see this comment!'
-            );
-            n.appendChild(child);
-          },
-        }).to.not.satisfy(changesHash);
-      });
-
-      it('does not change when a non-SCL namespace element node exists', () => {
-        expect({
-          node,
-          mutate: (n: Node): void => {
-            const child = n.ownerDocument!.createElementNS(
-              'http://www.dreaming.com/a/better/world',
-              'Dream'
-            );
-            child.setAttribute('dreamId', '001');
-            n.appendChild(child);
-          },
-        }).to.not.satisfy(changesHash);
-      });
-
-      it('does change when a non-SCL namespace element node exists and is considered', () => {
-        expect({
-          node,
-          opts: { namespaces: ['http://www.dreaming.com/a/better/world'] },
-          mutate: (n: Node): void => {
-            const child = n.ownerDocument!.createElementNS(
-              'http://www.dreaming.com/a/better/world',
-              'Dream'
-            );
-            child.setAttribute('dreamId', '001');
-            n.appendChild(child);
-          },
-        }).to.satisfy(changesHash);
-      });
-
-      it('does not change if the namespaced element has a different namespace to the added element', () => {
-        expect({
-          node,
-          opts: {
-            namespaces: ['http://www.dreaming.com/a/better/worldNotReally'],
-          },
-          mutate: (n: Node): void => {
-            const child = n.ownerDocument!.createElementNS(
-              'http://www.dreaming.com/a/better/world',
-              'Dream'
-            );
-            child.setAttribute('dreamId', '001');
-            n.appendChild(child);
-          },
-        }).to.not.satisfy(changesHash);
-      });
-
-      it('changes with the desc field if considered', () =>
-        expect({
-          node,
-          opts: { considerDescs: true },
-          mutate: (n: Node) => {
-            (<Element>n).setAttribute('desc', 'unblocked');
-          },
-        }).to.satisfy(changesHash));
-
-      // it('does not change when an incorrect SCL attribute is added', () => {
-      //   expect({
-      //     node,
-      //     mutate: (n: Node): void => {
-      //       (<Element>n).setAttribute('someRandomAttribute', 'hey');
-      //     },
-      //   }).to.not.satisfy(changesHash);
-      // });
-
-      // it('does not change when an incorrect SCL attribute is added', () => {
-      //   expect({
-      //     node,
-      //     mutate: (n: Node): void => {
-      //       (<Element>n).setAttribute('someRandomAttribute', 'hey');
-      //     },
-      //   }).to.not.satisfy(changesHash);
-      // });
-
-      // it('does change when a child of a Private element', () => {
-      //   expect({
-      //     node,
-      //     mutate: (n: Node): void => {
-      //       const child = (<Element>n).querySelector('EnumVal')!;
-      //       child.setAttribute('ord', '73');
-      //     },
-      //   }).to.satisfy(changesHash);
-      // });
-
-      // it('does change when a child EnumVal changes', () => {
-      //   expect({
-      //     node,
-      //     mutate: (n: Node): void => {
-      //       const child = (<Element>n).querySelector('EnumVal')!;
-      //       child.setAttribute('ord', '73');
-      //     },
-      //   }).to.satisfy(changesHash);
-      // });
     });
   });
 });
