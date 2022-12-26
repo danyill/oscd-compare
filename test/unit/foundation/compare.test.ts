@@ -13,20 +13,24 @@ function changesHash({ node, opts, mutate }: TestOptions): boolean {
 
 const doc = new DOMParser().parseFromString(
   `
-<SCL xmlns="http://www.iec.ch/61850/2003/SCL" xmlns:expl="https://example.org" version="2007" revision="B" release="4">
-<DataTypeTemplates>
-  <EnumType id="Example" xmlns:expl="https://example.org">
-    <EnumVal ord="0">blocked</EnumVal>
-    <EnumVal ord="1" expl:my="attr">on</EnumVal>
-    <Private type="star" src="./cosmos">
-    <Private type="dream" expl:probes="brain">
-  </EnumType>
-  <EnumType id="Example2" xmlns:expl="https://example.org">
-    <EnumVal ord="0">blocked</EnumVal>
-    <EnumVal ord="1">on</EnumVal>
-  </EnumType>
-</DataTypeTemplates>
+<SCL xmlns:sxy="http://www.iec.ch/61850/2003/SCLcoordinates"
+  xmlns="http://www.iec.ch/61850/2003/SCL"
+  xmlns:expl="https://example.org" version="2007" revision="B" release="4">
+  <Header id="Compare test"></Header>
+  <DataTypeTemplates>
+    <EnumType id="Example">
+      <EnumVal ord="0">blocked</EnumVal>
+      <EnumVal ord="1" expl:my="attr">on</EnumVal>
+      <Private type="star" src="./cosmos"></Private>
+      <Private type="dream" expl:probes="brain"></Private>
+    </EnumType>
+    <EnumType id="Example2">
+      <EnumVal ord="0">blocked</EnumVal>
+      <EnumVal ord="1">on</EnumVal>
+    </EnumType>
+  </DataTypeTemplates>
 </SCL>
+
 `,
   'application/xml'
 );
