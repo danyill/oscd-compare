@@ -23,6 +23,7 @@ const doc = new DOMParser().parseFromString(
       <EnumVal ord="1" expl:my="attr">on</EnumVal>
       <Private type="star" src="./cosmos"></Private>
       <Private type="dream" expl:probes="brain"></Private>
+      <Text>Just saying you know, these can go in many places</Text>
     </EnumType>
     <EnumType id="Example2">
       <EnumVal ord="0">blocked</EnumVal>
@@ -233,7 +234,7 @@ describe('hashNode', () => {
         node,
         mutate: (n: Node): void => {
           const child = n.ownerDocument!.createComment(
-            'You will never see this comment!'
+            'You will never see this comment in a comparison!'
           );
           n.appendChild(child);
         },
@@ -295,6 +296,20 @@ describe('hashNode', () => {
         },
       }).to.satisfy(changesHash));
 
+    // QUESTION: Should these be one of the overall arguments to consider Text elements?
+    it('changes when a Text element is added', () => {
+      expect({
+        node,
+        mutate: (n: Node): void => {
+          const child = n.ownerDocument!.createElementNS(
+            'http://www.iec.ch/61850/2003/SCL',
+            'Text'
+          );
+          n.appendChild(child);
+        },
+      }).to.satisfy(changesHash);
+    });
+
     describe('when a child changes', () => {
       it('does change when a child EnumVal changes', () => {
         expect({
@@ -323,6 +338,17 @@ describe('hashNode', () => {
           mutate: (n: Node): void => {
             const child = (<Element>n).querySelector('Private')!;
             child.setAttribute('type', 'ANewType');
+          },
+        }).to.satisfy(changesHash);
+      });
+
+      it('does change when a Text element changes', () => {
+        expect({
+          node,
+          opts: { considerPrivates: true },
+          mutate: (n: Node): void => {
+            const child = (<Element>n).querySelector('Text')!;
+            child.textContent = 'Merry Christmas, my friends!';
           },
         }).to.satisfy(changesHash);
       });

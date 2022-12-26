@@ -335,18 +335,6 @@ export function swapMap<K, V>(map: Map<K, V>): Map<V, K> {
 
 /*
 
-  <EnumType id="Mod" xmlns:expl="https://example.org">
-    <EnumVal ord="0" expl:my="attr">on</EnumVal>
-    <EnumVal ord="1">blocked</EnumVal>
-    <EnumVal ord="1">blocked<!--Comment!--></EnumVal>
-  </EnumType>
-
-  <EnumType id="Mod" xmlns:expl="https://example.org">
-    <EnumVal ord="1">blocked</EnumVal>
-    <EnumVal ord="0" expl:my="attr">on</EnumVal>
-    <EnumVal ord="1">blocked<!--Comment!--></EnumVal>
-  </EnumType>
-
   [
     {ord: '1', content: 'blocked'},
     {ord: '0', content: 'on', extAttributes: { 'https://example.org' : {'my': 'attr'}}},
@@ -372,7 +360,7 @@ type EnumVal = {
 
 type EnumType = { childCount: Number; desc?: string | null; childHash: string };
 
-type PrivateType = {
+type Private = {
   type: string | null;
   source: string | null;
   content: string | null;
@@ -381,7 +369,13 @@ type PrivateType = {
   extContent?: string;
 };
 
-type ModelSCLElement = EnumVal | EnumType | PrivateType;
+type Text = {
+  source: string | null;
+  content: string | null;
+  children: number;
+};
+
+type ModelSCLElement = EnumVal | EnumType | Private | Text;
 
 type ModelTextNode = string;
 
@@ -430,26 +424,31 @@ function transformEnumType(enumType: Element, opts: Options): EnumType {
   return { childCount: children.length, desc, childHash };
 }
 
-function transformPrivate(privateType: Element, opts: Options): PrivateType {
-  const type = privateType.getAttribute('type');
-  const source = privateType.getAttribute('source');
-  const content = privateType.textContent;
+function transformPrivate(privateSCL: Element, opts: Options): Private {
+  const type = privateSCL.getAttribute('type');
+  const source = privateSCL.getAttribute('source');
+  const content = privateSCL.textContent;
 
-  const children = Array.from(privateType.children).filter(c =>
+  const children = Array.from(privateSCL.children).filter(c =>
     opts.namespaces?.includes(c.namespaceURI ?? '')
   );
 
   const extAttributes: [string, string][] = Array.prototype.slice
-    .call(privateType.attributes)
+    .call(privateSCL.attributes)
     .map(attr => [attr.key, attr.value]);
 
-  // = Array.from(privateType.attributes).filter(
-  //   a =>
-  //     a.namespaceURI !== 'http://www.iec.ch/61850/2003/SCL' &&
-  //     opts.namespaces?.includes(a.namespaceURI ?? '')
-  // ).length;
-
   return { type, source, content, extAttributes, children: children.length };
+}
+
+function transformText(text: Element, opts: Options): Text {
+  const source = text.getAttribute('source');
+  const content = text.textContent;
+
+  const children = Array.from(text.children).filter(c =>
+    opts.namespaces?.includes(c.namespaceURI ?? '')
+  ).length;
+
+  return { source, content, children };
 }
 
 const sclTransforms: Partial<
@@ -458,6 +457,7 @@ const sclTransforms: Partial<
   EnumVal: transformEnumVal,
   EnumType: transformEnumType,
   Private: transformPrivate,
+  Text: transformText,
 };
 
 function transformElement(element: Element, _opts: Options): ModelXMLElement {
@@ -470,7 +470,10 @@ function isElement(node: Node): node is Element {
 
 function transformNode(node: Node, opts: Options): ModelXMLNode {
   if (isElement(node)) {
-    const sclTransform = sclTransforms[node.tagName];
+    const sclTransform =
+      node.namespaceURI === 'http://www.iec.ch/61850/2003/SCL'
+        ? sclTransforms[node.tagName]
+        : null;
     if (sclTransform) return sclTransform(node, opts);
     return transformElement(node, opts);
   }
