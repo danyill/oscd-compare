@@ -33,7 +33,22 @@ type Text = {
   children: number;
 };
 
-type ModelSCLElement = EnumVal | EnumType | Private | Text;
+type SclBase = {
+  tagName: string;
+  attributes: AttributeDict;
+  textContent: string | null;
+  childHash: string | null;
+};
+
+type SclElementOptions = {
+  attributeNames: string[];
+  childNames: string[];
+  includeTextContent?: boolean;
+  includePrivate?: boolean;
+  includeDescription?: boolean;
+};
+
+type ModelSCLElement = SclBase | EnumVal | EnumType | Private | Text;
 
 type ModelTextNode = string;
 
@@ -86,80 +101,106 @@ function getElementTextOrCDataContent(element: Element): string | null {
   return null;
 }
 
-function transformEnumVal(enumVal: Element, opts: Options): EnumVal {
-  const ord = enumVal.getAttribute('ord');
-  const desc = opts.considerDescs ? enumVal.getAttribute('desc') : undefined;
+function transformSclElement(
+  element: Element,
+  elementOpts: SclElementOptions,
+  opts: Options
+): SclBase {
+  let attributes: AttributeDict = {};
 
-  const content = getElementTextOrCDataContent(enumVal);
-  const extAttributes = Array.from(enumVal.attributes).filter(
-    a =>
-      a.namespaceURI !== 'http://www.iec.ch/61850/2003/SCL' &&
-      opts.namespaces?.includes(a.namespaceURI ?? '')
-  ).length;
-  return { ord, desc, content, extAttributes };
-}
-
-function transformEnumType(enumType: Element, opts: Options): EnumType {
-  const desc = opts.considerDescs ? enumType.getAttribute('desc') : undefined;
-
-  let children = Array.from(enumType.childNodes).filter(
-    n => n.nodeType !== Node.COMMENT_NODE
-  );
-
-  if (!opts.considerPrivates) {
-    children = children.filter(n => n.nodeName !== 'Private');
+  for (let i = 0; i < element.attributes.length; i += 1) {
+    const attr = element.attributes[i];
+    if (
+      opts.namespaces?.includes(attr.namespaceURI ?? 'null') ||
+      elementOpts.attributeNames.includes(attr.name) ||
+      (attr.name === 'desc' &&
+        elementOpts.includeDescription &&
+        opts.considerDescs)
+    ) {
+      const attrInfo = {
+        [attr.name]: {
+          value: attr.value,
+          namespace: attr.namespaceURI,
+        },
+      };
+      attributes = { ...attributes, ...attrInfo };
+    }
   }
 
-  children = children.filter(
-    n =>
-      n.isDefaultNamespace('http://www.iec.ch/61850/2003/SCL') ||
-      opts.namespaces?.includes((<Element>n).namespaceURI ?? '')
-  );
+  const textContent = elementOpts.includeTextContent
+    ? getElementTextOrCDataContent(element)
+    : '';
 
-  // eslint-disable-next-line no-use-before-define
-  const childHash = children.map(c => hashNode(c, opts)).join('');
+  const childHash = Array.from(element.children)
+    .filter(
+      child =>
+        elementOpts.childNames.includes(child.tagName) ||
+        opts.namespaces?.includes(child.namespaceURI || '') ||
+        (child.tagName === 'Private' &&
+          elementOpts.includePrivate &&
+          opts.considerPrivates)
+    )
+    // eslint-disable-next-line no-use-before-define
+    .map(c => hashNode(c, opts))
+    .join('');
 
-  return { childCount: children.length, desc, childHash };
+  return { tagName: element.tagName, attributes, textContent, childHash };
 }
 
-function transformPrivate(privateSCL: Element, opts: Options): Private {
-  const type = privateSCL.getAttribute('type');
-  const source = privateSCL.getAttribute('source');
-  const content = getElementTextOrCDataContent(privateSCL);
-
-  const children = Array.from(privateSCL.children).filter(c =>
-    opts.namespaces?.includes(c.namespaceURI ?? '')
+function transformEnumVal(enumVal: Element, opts: Options): SclBase {
+  return transformSclElement(
+    enumVal,
+    {
+      attributeNames: ['ord'],
+      childNames: [],
+      includeTextContent: true,
+      includePrivate: false,
+      includeDescription: true,
+    },
+    opts
   );
-
-  // eslint-disable-next-line no-use-before-define
-  const childHash = children.map(c => hashNode(c, opts)).join('');
-
-  const extAttributes: [string, string][] = Array.prototype.slice
-    .call(privateSCL.attributes)
-    .map(attr => [attr.key, attr.value]);
-
-  return {
-    type,
-    source,
-    content,
-    extAttributes,
-    children: children.length,
-    childHash,
-  };
 }
 
-function transformText(text: Element, opts: Options): Text {
-  const source = text.getAttribute('source');
-  const content = getElementTextOrCDataContent(text);
-  // NO does all the subchildren!
+function transformEnumType(enumType: Element, opts: Options): SclBase {
+  return transformSclElement(
+    enumType,
+    {
+      attributeNames: [],
+      childNames: ['EnumVal', 'Text'],
+      includeTextContent: true,
+      includePrivate: true,
+      includeDescription: true,
+    },
+    opts
+  );
+}
 
-  const children = Array.from(text.children).filter(c =>
-    opts.namespaces?.includes(c.namespaceURI ?? '')
-  ).length;
+function transformPrivate(privateSCL: Element, opts: Options): SclBase {
+  return transformSclElement(
+    privateSCL,
+    {
+      attributeNames: ['type', 'source'],
+      childNames: [],
+      includeTextContent: true,
+      includePrivate: false,
+      includeDescription: false,
+    },
+    opts
+  );
+}
 
-  // TODO: need to work on the children
-
-  return { source, content, children };
+function transformText(text: Element, opts: Options): SclBase {
+  return transformSclElement(
+    text,
+    {
+      attributeNames: ['source'],
+      childNames: [],
+      includeTextContent: true,
+      includePrivate: false,
+      includeDescription: false,
+    },
+    opts
+  );
 }
 
 const sclTransforms: Partial<

@@ -8,8 +8,6 @@ type TestOptions = { node: Node; opts?: Options; mutate: (n: Node) => void };
 function changesHash({ node, opts, mutate }: TestOptions): boolean {
   const mutatedNode = node.cloneNode(true);
   mutate(mutatedNode);
-  // console.log(hashNode(mutatedNode, opts));
-  // , hashNode(mutatedNode, opts));
   return hashNode(node, opts) !== hashNode(mutatedNode, opts);
 }
 
@@ -180,7 +178,7 @@ describe('hashNode', () => {
       it('changes with a considered non-SCL namespace attribute value', () => {
         expect({
           node,
-          opts: { considerPrivates: true },
+          opts: { namespaces: ['https://example.org'] },
           mutate: (n: Node): void => {
             (<Element>n).setAttributeNS(
               'https://example.org',
