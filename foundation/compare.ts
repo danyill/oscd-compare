@@ -1,4 +1,238 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+
+type AttributeDict = Record<string, Record<string, string | null>>;
+
+export type Options = {
+  namespaces?: string[];
+  considerDescs?: boolean;
+  considerPrivates?: boolean;
+};
+
+type EnumVal = {
+  ord: string | null;
+  desc?: string | null;
+  content: string | null;
+  extAttributes?: number;
+};
+
+type EnumType = { childCount: Number; desc?: string | null; childHash: string };
+
+type Private = {
+  type: string | null;
+  source: string | null;
+  content: string | null;
+  children: number;
+  childHash: string | null;
+  extAttributes: Array<[string, string]>;
+  extContent?: string;
+};
+
+type Text = {
+  source: string | null;
+  content: string | null;
+  children: number;
+};
+
+type ModelSCLElement = EnumVal | EnumType | Private | Text;
+
+type ModelTextNode = string;
+
+// eslint-disable-next-line no-use-before-define
+type ModelXMLNode = ModelXMLElement | ModelSCLElement | ModelTextNode;
+
+type ModelXMLElement = {
+  tagName: string;
+  attributes: AttributeDict;
+  textContent: string | null;
+  children: ModelXMLElement[];
+  childHash: string | null;
+};
+
+function getElementTextOrCDataContent(element: Element): string | null {
+  const nodeTexts: string[] = [];
+
+  // Ensure cross-platform for encoding
+  function filterWhitespaceLines(textArray: string[]): string | null {
+    const filteredText: string[] = [];
+    const whitespaceLine = /(?:^\s+$)/;
+
+    textArray.forEach(text => {
+      if (!whitespaceLine.test(text)) {
+        // If it is not a line of whitespace.
+        filteredText.push(text.trim());
+      }
+    });
+
+    if (filteredText.length > 0) {
+      return filteredText.join('');
+    }
+
+    return null; // No text to return.
+  }
+
+  if (!element.hasChildNodes()) {
+    return null;
+  }
+
+  element.childNodes.forEach(child => {
+    if ([Node.TEXT_NODE, Node.CDATA_SECTION_NODE].includes(child.nodeType))
+      nodeTexts.push(child.nodeValue || '');
+  });
+
+  if (nodeTexts.length > 0) {
+    return filterWhitespaceLines(nodeTexts);
+  }
+
+  return null;
+}
+
+function transformEnumVal(enumVal: Element, opts: Options): EnumVal {
+  const ord = enumVal.getAttribute('ord');
+  const desc = opts.considerDescs ? enumVal.getAttribute('desc') : undefined;
+
+  const content = getElementTextOrCDataContent(enumVal);
+  const extAttributes = Array.from(enumVal.attributes).filter(
+    a =>
+      a.namespaceURI !== 'http://www.iec.ch/61850/2003/SCL' &&
+      opts.namespaces?.includes(a.namespaceURI ?? '')
+  ).length;
+  return { ord, desc, content, extAttributes };
+}
+
+function transformEnumType(enumType: Element, opts: Options): EnumType {
+  const desc = opts.considerDescs ? enumType.getAttribute('desc') : undefined;
+
+  let children = Array.from(enumType.childNodes).filter(
+    n => n.nodeType !== Node.COMMENT_NODE
+  );
+
+  if (!opts.considerPrivates) {
+    children = children.filter(n => n.nodeName !== 'Private');
+  }
+
+  children = children.filter(
+    n =>
+      n.isDefaultNamespace('http://www.iec.ch/61850/2003/SCL') ||
+      opts.namespaces?.includes((<Element>n).namespaceURI ?? '')
+  );
+
+  // eslint-disable-next-line no-use-before-define
+  const childHash = children.map(c => hashNode(c, opts)).join('');
+
+  return { childCount: children.length, desc, childHash };
+}
+
+function transformPrivate(privateSCL: Element, opts: Options): Private {
+  const type = privateSCL.getAttribute('type');
+  const source = privateSCL.getAttribute('source');
+  const content = getElementTextOrCDataContent(privateSCL);
+
+  const children = Array.from(privateSCL.children).filter(c =>
+    opts.namespaces?.includes(c.namespaceURI ?? '')
+  );
+
+  // eslint-disable-next-line no-use-before-define
+  const childHash = children.map(c => hashNode(c, opts)).join('');
+
+  const extAttributes: [string, string][] = Array.prototype.slice
+    .call(privateSCL.attributes)
+    .map(attr => [attr.key, attr.value]);
+
+  return {
+    type,
+    source,
+    content,
+    extAttributes,
+    children: children.length,
+    childHash,
+  };
+}
+
+function transformText(text: Element, opts: Options): Text {
+  const source = text.getAttribute('source');
+  const content = getElementTextOrCDataContent(text);
+  // NO does all the subchildren!
+
+  const children = Array.from(text.children).filter(c =>
+    opts.namespaces?.includes(c.namespaceURI ?? '')
+  ).length;
+
+  // TODO: need to work on the children
+
+  return { source, content, children };
+}
+
+const sclTransforms: Partial<
+  Record<string, (element: Element, opts: Options) => ModelSCLElement>
+> = {
+  EnumVal: transformEnumVal,
+  EnumType: transformEnumType,
+  Private: transformPrivate,
+  Text: transformText,
+};
+
+function transformElement(element: Element, opts: Options): ModelXMLElement {
+  let attributes: AttributeDict = {};
+
+  for (let i = 0; i < element.attributes.length; i += 1) {
+    const attr = element.attributes[i];
+    if (
+      opts.namespaces?.includes(attr.namespaceURI ?? 'null') ||
+      attr.namespaceURI === null
+    ) {
+      const attrInfo = {
+        [attr.name]: {
+          value: attr.value,
+          namespace: attr.namespaceURI,
+        },
+      };
+      attributes = { ...attributes, ...attrInfo };
+    }
+  }
+
+  const textContent = getElementTextOrCDataContent(element);
+
+  const childHash = Array.from(element.children)
+    // eslint-disable-next-line no-use-before-define
+    .map(c => hashNode(c, opts))
+    .join('');
+
+  return {
+    tagName: element.tagName,
+    attributes,
+    textContent,
+    children: [],
+    childHash,
+  };
+}
+
+function isElement(node: Node): node is Element {
+  return node.nodeType === Node.ELEMENT_NODE;
+}
+
+function transformNode(node: Node, opts: Options): ModelXMLNode {
+  if (isElement(node)) {
+    const sclTransform =
+      node.namespaceURI === 'http://www.iec.ch/61850/2003/SCL'
+        ? sclTransforms[node.tagName]
+        : null;
+    if (sclTransform) return sclTransform(node, opts);
+    return transformElement(node, opts);
+  }
+  return '';
+}
+
+function hashString(str: string): string {
+  return str;
+}
+
+export function hashNode(node: Node, opts: Options = {}): string {
+  return hashString(JSON.stringify(transformNode(node, opts)));
+}
+
+// Older prototyping efforts below
+// Can be mostly abandoned now
+
 type ExclusionType = {
   nodeName: string;
   attribute: string;
@@ -331,161 +565,6 @@ export function swapMap<K, V>(map: Map<K, V>): Map<V, K> {
     result.set(value, key);
   }
   return result;
-}
-
-/*
-
-  [
-    {ord: '1', content: 'blocked'},
-    {ord: '0', content: 'on', extAttributes: { 'https://example.org' : {'my': 'attr'}}},
-    {ord: '1', content: 'blocked'},
-  ]
-
-   */
-
-type AttributeDict = Record<string, Record<string, string>>;
-
-export type Options = {
-  namespaces?: string[];
-  considerDescs?: boolean;
-  considerPrivates?: boolean;
-};
-
-type EnumVal = {
-  ord: string | null;
-  desc?: string | null;
-  content: string | null;
-  extAttributes?: number;
-};
-
-type EnumType = { childCount: Number; desc?: string | null; childHash: string };
-
-type Private = {
-  type: string | null;
-  source: string | null;
-  content: string | null;
-  children: number;
-  extAttributes: Array<[string, string]>;
-  extContent?: string;
-};
-
-type Text = {
-  source: string | null;
-  content: string | null;
-  children: number;
-};
-
-type ModelSCLElement = EnumVal | EnumType | Private | Text;
-
-type ModelTextNode = string;
-
-// eslint-disable-next-line no-use-before-define
-type ModelXMLNode = ModelXMLElement | ModelSCLElement | ModelTextNode;
-
-type ModelXMLElement = {
-  tagName: string;
-  attributes: AttributeDict;
-  children: ModelXMLNode[];
-};
-
-function transformEnumVal(enumVal: Element, opts: Options): EnumVal {
-  const ord = enumVal.getAttribute('ord');
-  const desc = opts.considerDescs ? enumVal.getAttribute('desc') : undefined;
-
-  const content = enumVal.textContent;
-  const extAttributes = Array.from(enumVal.attributes).filter(
-    a =>
-      a.namespaceURI !== 'http://www.iec.ch/61850/2003/SCL' &&
-      opts.namespaces?.includes(a.namespaceURI ?? '')
-  ).length;
-  return { ord, desc, content, extAttributes };
-}
-
-function transformEnumType(enumType: Element, opts: Options): EnumType {
-  const desc = opts.considerDescs ? enumType.getAttribute('desc') : undefined;
-
-  let children = Array.from(enumType.childNodes).filter(
-    n => n.nodeType !== Node.COMMENT_NODE
-  );
-
-  if (!opts.considerPrivates) {
-    children = children.filter(n => n.nodeName !== 'Private');
-  }
-
-  children = children.filter(
-    n =>
-      n.isDefaultNamespace('http://www.iec.ch/61850/2003/SCL') ||
-      opts.namespaces?.includes((<Element>n).namespaceURI ?? '')
-  );
-
-  // eslint-disable-next-line no-use-before-define
-  const childHash = children.map(c => hashNode(c, opts)).join('');
-
-  return { childCount: children.length, desc, childHash };
-}
-
-function transformPrivate(privateSCL: Element, opts: Options): Private {
-  const type = privateSCL.getAttribute('type');
-  const source = privateSCL.getAttribute('source');
-  const content = privateSCL.textContent;
-
-  const children = Array.from(privateSCL.children).filter(c =>
-    opts.namespaces?.includes(c.namespaceURI ?? '')
-  );
-
-  const extAttributes: [string, string][] = Array.prototype.slice
-    .call(privateSCL.attributes)
-    .map(attr => [attr.key, attr.value]);
-
-  return { type, source, content, extAttributes, children: children.length };
-}
-
-function transformText(text: Element, opts: Options): Text {
-  const source = text.getAttribute('source');
-  const content = text.textContent;
-
-  const children = Array.from(text.children).filter(c =>
-    opts.namespaces?.includes(c.namespaceURI ?? '')
-  ).length;
-
-  return { source, content, children };
-}
-
-const sclTransforms: Partial<
-  Record<string, (element: Element, opts: Options) => ModelSCLElement>
-> = {
-  EnumVal: transformEnumVal,
-  EnumType: transformEnumType,
-  Private: transformPrivate,
-  Text: transformText,
-};
-
-function transformElement(element: Element, _opts: Options): ModelXMLElement {
-  return { tagName: element.tagName, attributes: {}, children: [] };
-}
-
-function isElement(node: Node): node is Element {
-  return node.nodeType === Node.ELEMENT_NODE;
-}
-
-function transformNode(node: Node, opts: Options): ModelXMLNode {
-  if (isElement(node)) {
-    const sclTransform =
-      node.namespaceURI === 'http://www.iec.ch/61850/2003/SCL'
-        ? sclTransforms[node.tagName]
-        : null;
-    if (sclTransform) return sclTransform(node, opts);
-    return transformElement(node, opts);
-  }
-  return '';
-}
-
-function hashString(str: string): string {
-  return str;
-}
-
-export function hashNode(node: Node, opts: Options = {}): string {
-  return hashString(JSON.stringify(transformNode(node, opts)));
 }
 
 export function hashSCL(doc: Document, namespaces: string[]) {
