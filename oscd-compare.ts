@@ -3,8 +3,6 @@ import { css, html, LitElement } from 'lit';
 import { property, query, state } from 'lit/decorators.js';
 // import { classMap } from 'lit/directives/class-map.js';
 
-import { getXmlRootNamespaces, hashSCL } from './foundation/compare.js';
-
 import { ProcessingDialog } from './foundation/components/processing.js';
 
 // import './foundation/components/processing.js'
@@ -38,17 +36,17 @@ export default class comparePlugin extends LitElement {
     this.waiter.processing = true;
     const startTime = performance.now();
 
-    const namespaces = getXmlRootNamespaces(this.xmlDoc[0]);
+    // const namespaces = getXmlRootNamespaces(this.xmlDoc[0]);
 
     // const firstDocHashes = hashNodeRecursively(this.xmlDoc[0].documentElement, namespaces);
-    const firstDocHashes = hashSCL(this.xmlDoc[0], namespaces);
+    // const firstDocHashes = hashSCL(this.xmlDoc[0], namespaces);
 
     const endTime = performance.now();
     // this.waiter.processing = false;
     // Calculate the duration of the function
     const duration = endTime - startTime;
     console.log(duration, 'ms');
-    console.log(firstDocHashes);
+    // console.log(firstDocHashes);
     // , secondDocHashes);
 
     // compareMaps(firstDocHashes, secondDocHashes);
