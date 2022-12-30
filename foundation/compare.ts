@@ -2,66 +2,70 @@
 
 type AttributeDict = Record<string, Record<string, string | null>>;
 
-export type Options = {
+export interface Options {
   namespaces?: string[];
   considerDescs?: boolean;
   considerPrivates?: boolean;
-};
+}
 
-type EnumVal = {
-  ord: string | null;
-  desc?: string | null;
-  content: string | null;
-  extAttributes?: number;
-};
+// interface EnumVal {
+//   ord: string | null;
+//   desc?: string | null;
+//   content: string | null;
+//   extAttributes?: number;
+// }
 
-type EnumType = { childCount: Number; desc?: string | null; childHash: string };
+// interface EnumType {
+//   childCount: Number;
+//   desc?: string | null;
+//   childHash: string;
+// }
 
-type Private = {
-  type: string | null;
-  source: string | null;
-  content: string | null;
-  children: number;
-  childHash: string | null;
-  extAttributes: Array<[string, string]>;
-  extContent?: string;
-};
+// interface Private {
+//   type: string | null;
+//   source: string | null;
+//   content: string | null;
+//   children: number;
+//   childHash: string | null;
+//   extAttributes: Array<[string, string]>;
+//   extContent?: string;
+// }
 
-type Text = {
-  source: string | null;
-  content: string | null;
-  children: number;
-};
+// interface Text {
+//   source: string | null;
+//   content: string | null;
+//   children: number;
+// }
 
-type SclBase = {
+interface SclBase {
   tagName: string;
   attributes: AttributeDict;
   textContent: string | null;
   childHash: string | null;
-};
+}
 
-type SclElementOptions = {
+interface SclElementOptions {
   attributeNames: string[];
   childNames: string[];
   includeTextContent?: boolean;
   includePrivate?: boolean;
   includeDescription?: boolean;
-};
+}
 
-type ModelSCLElement = SclBase | EnumVal | EnumType | Private | Text;
+type ModelSCLElement = SclBase;
+// | EnumVal | EnumType | Private | Text;
 
 type ModelTextNode = string;
 
 // eslint-disable-next-line no-use-before-define
 type ModelXMLNode = ModelXMLElement | ModelSCLElement | ModelTextNode;
 
-type ModelXMLElement = {
+interface ModelXMLElement {
   tagName: string;
   attributes: AttributeDict;
   textContent: string | null;
-  children: ModelXMLElement[];
   childHash: string | null;
-};
+}
 
 function getElementTextOrCDataContent(element: Element): string | null {
   const nodeTexts: string[] = [];
@@ -242,7 +246,6 @@ function transformElement(element: Element, opts: Options): ModelXMLElement {
     tagName: element.tagName,
     attributes,
     textContent,
-    children: [],
     childHash,
   };
 }
@@ -269,4 +272,14 @@ function hashString(str: string): string {
 
 export function hashNode(node: Node, opts: Options = {}): string {
   return hashString(JSON.stringify(transformNode(node, opts)));
+}
+
+class SCLDocumentHash {
+  doc: XMLDocument;
+
+  constructor(doc: XMLDocument) {
+    this.doc = doc;
+
+    console.log(this.doc);
+  }
 }
