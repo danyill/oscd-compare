@@ -23,7 +23,7 @@ const doc = new DOMParser().parseFromString(
     <EnumType id="Example">
       <EnumVal ord="0">blocked</EnumVal>
       <EnumVal ord="1" expl:my="attr">on</EnumVal>
-      <Private type="star" src="./cosmos"></Private>
+      <Private type="star" src="./cosmos">blocked</Private>
       <Private type="dream" expl:probes="brain">
         <expl:MyElement myAttr="myVal" expl:AnotherAttr="ImportantStuff">
           <expl:AnotherElement myAttr="myVal" expl:AnotherAttr="ImportantStuff"></expl:AnotherElement>
@@ -45,7 +45,7 @@ const doc = new DOMParser().parseFromString(
 describe('hashNode', () => {
   describe('given an SCL Element', () => {
     describe('with tagName EnumVal', () => {
-      const node = doc.querySelector('EnumVal');
+      const node = doc.querySelector('EnumVal:nth-child(2)');
       it('changes with the ord attribute', () => {
         expect({
           node,
@@ -115,6 +115,15 @@ describe('hashNode', () => {
               'tree',
               'kauri'
             );
+          },
+        }).to.satisfy(changesHash));
+
+      it('does change with changed attributes from other namespaces if considered', () =>
+        expect({
+          node,
+          opts: { namespaces: ['https://example.org'] },
+          mutate: (n: Node) => {
+            (<Element>n).setAttributeNS('https://example.org', 'my', 'newAttr');
           },
         }).to.satisfy(changesHash));
     });
@@ -207,6 +216,11 @@ describe('hashNode', () => {
     describe('with tagName EnumType', () => {
       const node = doc.querySelector('EnumType');
 
+      /* tip: handle cases where only config options change with sub-describe
+      describe('when considering Private sections', () => {
+        cons opts = {....
+       */
+
       it('changes when an EnumVal is added', () => {
         expect({
           node,
@@ -235,7 +249,7 @@ describe('hashNode', () => {
         }).to.not.satisfy(changesHash);
       });
 
-      it('does change when a Private element exists and is considered', () => {
+      it('does change when a Private element is appended and is considered', () => {
         expect({
           node,
           opts: { considerPrivates: true },
@@ -250,7 +264,7 @@ describe('hashNode', () => {
         }).to.satisfy(changesHash);
       });
 
-      it('does not change when a comment node exists', () => {
+      it('does not change when a child comment is appended', () => {
         expect({
           node,
           mutate: (n: Node): void => {
@@ -276,7 +290,7 @@ describe('hashNode', () => {
         }).to.not.satisfy(changesHash);
       });
 
-      it('does change when a non-SCL namespace element node exists and is considered', () => {
+      it('does change when a non-SCL namespace child is appended and is considered', () => {
         expect({
           node,
           opts: { namespaces: ['http://www.dreaming.com/a/better/world'] },

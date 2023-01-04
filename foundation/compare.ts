@@ -6,13 +6,14 @@ export type Options = {
   namespaces?: string[];
   considerDescs?: boolean;
   considerPrivates?: boolean;
+  caches: { nodes: Map<string, Set<Node>>; hashes: WeakMap<Node, string> };
 };
 
 type EnumVal = {
   ord: string | null;
   desc?: string | null;
   content: string | null;
-  extAttributes?: number;
+  extAttributes?: AttributeDict;
 };
 
 type EnumType = { childCount: Number; desc?: string | null; childHash: string };
@@ -20,11 +21,8 @@ type EnumType = { childCount: Number; desc?: string | null; childHash: string };
 type Private = {
   type: string | null;
   source: string | null;
-  content: string | null;
-  children: number;
-  childHash: string | null;
-  extAttributes: Array<[string, string]>;
-  extContent?: string;
+  extAttributes: [string, string][];
+  childHashes: string[];
 };
 
 type Text = {
@@ -35,10 +33,10 @@ type Text = {
 
 type ModelSCLElement = EnumVal | EnumType | Private | Text;
 
-type ModelTextNode = string;
+type ModelCharData = string;
 
 // eslint-disable-next-line no-use-before-define
-type ModelXMLNode = ModelXMLElement | ModelSCLElement | ModelTextNode;
+type ModelXMLNode = ModelXMLElement | ModelSCLElement | ModelCharData;
 
 type ModelXMLElement = {
   tagName: string;
@@ -91,11 +89,18 @@ function transformEnumVal(enumVal: Element, opts: Options): EnumVal {
   const desc = opts.considerDescs ? enumVal.getAttribute('desc') : undefined;
 
   const content = getElementTextOrCDataContent(enumVal);
-  const extAttributes = Array.from(enumVal.attributes).filter(
-    a =>
-      a.namespaceURI !== 'http://www.iec.ch/61850/2003/SCL' &&
-      opts.namespaces?.includes(a.namespaceURI ?? '')
-  ).length;
+  const extAttributes: AttributeDict = {};
+  Array.from(enumVal.attributes)
+    .filter(
+      a =>
+        a.namespaceURI !== 'http://www.iec.ch/61850/2003/SCL' &&
+        opts.namespaces?.includes(a.namespaceURI ?? '')
+    )
+    .forEach((attr: Attr) => {
+      if (!extAttributes[attr.namespaceURI ?? ''])
+        extAttributes[attr.namespaceURI ?? ''] = {};
+      extAttributes[attr.namespaceURI ?? ''][attr.name] = attr.value;
+    });
   return { ord, desc, content, extAttributes };
 }
 
@@ -122,17 +127,48 @@ function transformEnumType(enumType: Element, opts: Options): EnumType {
   return { childCount: children.length, desc, childHash };
 }
 
+interface DAType {
+  not: 'implemented';
+}
+type BasicType = 'INT8U' | 'Timestamp' | string; // FIXME: complete the list
+type BDA = {
+  base: BasicType | string;
+  name: string;
+  value?: string;
+};
+
+function transformBDA(bda: Element, opts: Options): BDA {
+  const name = bda.getAttribute('name') ?? '';
+  const bType = bda.getAttribute('bType') ?? '';
+  const base = bType;
+  const typeName = bda.getAttribute('type') ?? '';
+  if (base === 'Enum') {
+    const enumType = bda
+      ?.closest('DataTypeTemplates')
+      ?.querySelector(`EnumType[id="${typeName}"]`);
+    // FIXME: Do the cache lookup thing
+  }
+  if (base === 'Struct') {
+    const daType = bda
+      ?.closest('DataTypeTemplates')
+      ?.querySelector(`DAType[id="${typeName}"]`);
+  }
+  const value = bda.querySelector('Val')?.textContent ?? undefined;
+  return { name, base, value };
+}
+
+function transformDAType(daType: Element, opts: Options): DAType {
+  return { not: 'implemented' };
+}
+
 function transformPrivate(privateSCL: Element, opts: Options): Private {
   const type = privateSCL.getAttribute('type');
   const source = privateSCL.getAttribute('source');
   const content = getElementTextOrCDataContent(privateSCL);
 
-  const children = Array.from(privateSCL.children).filter(c =>
-    opts.namespaces?.includes(c.namespaceURI ?? '')
-  );
-
+  const children = Array.from(privateSCL.childNodes);
   // eslint-disable-next-line no-use-before-define
-  const childHash = children.map(c => hashNode(c, opts)).join('');
+  const childHashes = children.map(c => hashNode(c, opts));
 
   const extAttributes: [string, string][] = Array.prototype.slice
     .call(privateSCL.attributes)
@@ -141,10 +177,8 @@ function transformPrivate(privateSCL: Element, opts: Options): Private {
   return {
     type,
     source,
-    content,
     extAttributes,
-    children: children.length,
-    childHash,
+    childHashes,
   };
 }
 
@@ -210,6 +244,10 @@ function isElement(node: Node): node is Element {
   return node.nodeType === Node.ELEMENT_NODE;
 }
 
+function isCData(node: Node): node is CharacterData {
+  return [Node.TEXT_NODE, Node.CDATA_SECTION_NODE].includes(node.nodeType);
+}
+
 function transformNode(node: Node, opts: Options): ModelXMLNode {
   if (isElement(node)) {
     const sclTransform =
@@ -219,6 +257,7 @@ function transformNode(node: Node, opts: Options): ModelXMLNode {
     if (sclTransform) return sclTransform(node, opts);
     return transformElement(node, opts);
   }
+  if (isCData(node)) return node.data;
   return '';
 }
 
@@ -226,7 +265,15 @@ function hashString(str: string): string {
   return str;
 }
 
-export function hashNode(node: Node, opts: Options = {}): string {
+export function hashNode(
+  node: Node,
+  opts: Options = {
+    caches: {
+      hashes: new WeakMap<Node, string>(),
+      nodes: new Map<string, Set<Node>>(),
+    },
+  }
+): string {
   return hashString(JSON.stringify(transformNode(node, opts)));
 }
 
